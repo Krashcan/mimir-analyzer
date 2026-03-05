@@ -1,0 +1,9 @@
+# Compiled binary
+mimir-analyzer
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
