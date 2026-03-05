@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"mimir-analyzer/amp"
+	"mimir-analyzer/cli"
 	"mimir-analyzer/config"
 	mcpserver "mimir-analyzer/mcp"
 )
@@ -18,8 +19,13 @@ import (
 const helpText = `mimir-analyzer — Mimir load test bottleneck analyzer (MCP server)
 
 USAGE
-  mimir-analyzer            Start the MCP server (stdio transport, for Claude Code)
-  mimir-analyzer --help     Print this help
+  mimir-analyzer                                    Start the MCP server (stdio transport)
+  mimir-analyzer --help                             Print this help
+  mimir-analyzer query <expr> [--time <RFC3339>]    Run an instant PromQL query
+  mimir-analyzer query-range <expr> [--step 5m]     Run a range query
+  mimir-analyzer list-metrics [--match '{...}']     List available metrics
+  mimir-analyzer diagnose <subsystem>               Run diagnostic bundle
+  mimir-analyzer check-connection                   Verify AMP connectivity
 
 REQUIRED ENVIRONMENT VARIABLES
   AMP_ENDPOINT        Amazon Managed Prometheus workspace URL
@@ -74,7 +80,7 @@ INVESTIGATION APPROACH
   1. Start with: run_diagnostic_bundle subsystem=ruler
      Ruler is the primary suspect for missed evaluations.
   2. Confirm the symptom:
-       increase(cortex_ruler_rule_evaluation_missed_iterations_total[<window>])
+       increase(cortex_prometheus_rule_group_iterations_missed_total[<window>])
   3. Trace the call path:
        ruler → query_frontend → querier → ingester / store_gateway
                ↓ writes back via
@@ -84,9 +90,9 @@ INVESTIGATION APPROACH
   5. Produce a report: bottleneck component, evidence, scaling recommendation.
 
 KEY MIMIR METRICS FOR MISSED EVALUATIONS
-  cortex_ruler_rule_evaluation_missed_iterations_total   — the primary symptom
-  cortex_ruler_rule_evaluation_duration_seconds          — ruler evaluation latency
-  cortex_ruler_rule_group_duration_seconds               — full group eval latency
+  cortex_prometheus_rule_group_iterations_missed_total   — the primary symptom
+  cortex_prometheus_rule_evaluation_duration_seconds     — ruler evaluation latency
+  cortex_prometheus_rule_group_duration_seconds          — full group eval latency
   cortex_ruler_queries_failed_total                      — querier errors from ruler
   cortex_query_frontend_queue_length                     — query backpressure
   cortex_querier_query_duration_seconds                  — querier latency
@@ -95,10 +101,10 @@ KEY MIMIR METRICS FOR MISSED EVALUATIONS
 
 EXAMPLE QUERIES
   # How many evaluations were missed during the load test?
-  increase(cortex_ruler_rule_evaluation_missed_iterations_total[2h])
+  increase(cortex_prometheus_rule_group_iterations_missed_total[2h])
 
   # p99 evaluation latency over time
-  histogram_quantile(0.99, rate(cortex_ruler_rule_evaluation_duration_seconds_bucket[5m]))
+  histogram_quantile(0.99, rate(cortex_prometheus_rule_evaluation_duration_seconds_bucket[5m]))
 
   # Is the query frontend backed up?
   cortex_query_frontend_queue_length
@@ -129,6 +135,15 @@ func main() {
 	}
 
 	client := amp.NewClientWithConfig(cfg, awsCfg.Credentials)
+
+	args := flag.Args()
+	if len(args) > 0 {
+		if err := cli.Run(context.TODO(), args, client, cfg, os.Stdout); err != nil {
+			log.Fatalf("CLI error: %v", err)
+		}
+		return
+	}
+
 	handlers := mcpserver.NewHandlers(client, cfg)
 	s := mcpserver.NewServer(handlers)
 

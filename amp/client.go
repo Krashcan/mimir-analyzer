@@ -148,16 +148,16 @@ func NewTestClient(endpoint string, cfg *config.Config) *Client {
 
 // ConnectionStatus is the structured result of a connection check.
 type ConnectionStatus struct {
-	Status    string `json:"status"`
-	Endpoint  string `json:"endpoint"`
-	Message   string `json:"message"`
-	BuildInfo any    `json:"build_info,omitempty"`
+	Status     string `json:"status"`
+	Endpoint   string `json:"endpoint"`
+	Message    string `json:"message"`
+	LabelCount int    `json:"label_count,omitempty"`
 }
 
-// CheckConnection verifies connectivity to the AMP endpoint by calling /api/v1/status/buildinfo.
+// CheckConnection verifies connectivity to the AMP endpoint by calling /api/v1/labels.
 // It always returns a ConnectionStatus (never a Go error) so the handler can always return structured JSON.
 func (c *Client) CheckConnection(ctx context.Context) *ConnectionStatus {
-	reqURL := fmt.Sprintf("%s/api/v1/status/buildinfo", c.endpoint)
+	reqURL := fmt.Sprintf("%s/api/v1/labels", c.endpoint)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return &ConnectionStatus{
@@ -169,7 +169,6 @@ func (c *Client) CheckConnection(ctx context.Context) *ConnectionStatus {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		// Classify the error to determine the right status
 		var ampErr *AMPError
 		if errors.As(err, &ampErr) {
 			switch ampErr.Category {
@@ -217,7 +216,6 @@ func (c *Client) CheckConnection(ctx context.Context) *ConnectionStatus {
 	}
 	defer resp.Body.Close()
 
-	// Handle non-200 responses for test clients (where round tripper doesn't intercept)
 	if resp.StatusCode == 401 || resp.StatusCode == 403 {
 		return &ConnectionStatus{
 			Status:   "auth_failed",
@@ -249,19 +247,22 @@ func (c *Client) CheckConnection(ctx context.Context) *ConnectionStatus {
 		}
 	}
 
-	var buildInfo any
-	if err := json.Unmarshal(body, &buildInfo); err != nil {
+	var labelsResp struct {
+		Status string   `json:"status"`
+		Data   []string `json:"data"`
+	}
+	if err := json.Unmarshal(body, &labelsResp); err != nil {
 		return &ConnectionStatus{
 			Status:   "connected",
 			Endpoint: c.endpoint,
-			Message:  "connected (could not parse build info)",
+			Message:  "connected (could not parse labels response)",
 		}
 	}
 
 	return &ConnectionStatus{
-		Status:    "connected",
-		Endpoint:  c.endpoint,
-		Message:   "successfully connected to AMP",
-		BuildInfo: buildInfo,
+		Status:     "connected",
+		Endpoint:   c.endpoint,
+		Message:    "successfully connected to AMP",
+		LabelCount: len(labelsResp.Data),
 	}
 }

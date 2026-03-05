@@ -47,7 +47,7 @@ func NewServer(handlers *Handlers) *server.MCPServer {
 	)
 
 	diagnosticBundleTool := mcpgo.NewTool("run_diagnostic_bundle",
-		mcpgo.WithDescription("Run pre-built diagnostic queries for a Mimir subsystem over the load test window. start/end can narrow the window but cannot exceed it."),
+		mcpgo.WithDescription("Run pre-built diagnostic queries for a Mimir subsystem over the load test window. start/end can narrow the window but cannot exceed it. Returns summaries by default; set verbose=true to include raw data."),
 		mcpgo.WithString("subsystem",
 			mcpgo.Required(),
 			mcpgo.Description("Mimir subsystem to diagnose"),
@@ -58,6 +58,9 @@ func NewServer(handlers *Handlers) *server.MCPServer {
 		),
 		mcpgo.WithString("end",
 			mcpgo.Description("Optional narrowing end within the load test window."),
+		),
+		mcpgo.WithBoolean("verbose",
+			mcpgo.Description("Include raw query data in results. Default false (summaries only)."),
 		),
 	)
 

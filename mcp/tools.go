@@ -178,6 +178,7 @@ func (h *Handlers) HandleDiagnosticBundle(ctx context.Context, req mcpgo.CallToo
 
 	startStr := req.GetString("start", "")
 	endStr := req.GetString("end", "")
+	verbose := req.GetBool("verbose", false)
 
 	var start, end time.Time
 	if startStr != "" {
@@ -198,6 +199,14 @@ func (h *Handlers) HandleDiagnosticBundle(ctx context.Context, req mcpgo.CallToo
 	result, err := diagnostics.RunBundle(ctx, h.client, h.config, subsystem, start, end)
 	if err != nil {
 		return h.ampErrorResult("", err), nil
+	}
+
+	if !verbose {
+		for i := range result.Results {
+			if result.Results[i].Result != nil {
+				result.Results[i].Result.Data = nil
+			}
+		}
 	}
 
 	return jsonResult(result), nil

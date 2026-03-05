@@ -229,11 +229,11 @@ func TestNewClient(t *testing.T) {
 
 func TestCheckConnection_Connected(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/status/buildinfo" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
+		if r.URL.Path != "/api/v1/labels" {
+			t.Errorf("unexpected path: %s, want /api/v1/labels", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"status":"success","data":{"version":"2.10.0","branch":"HEAD"}}`)
+		fmt.Fprint(w, `{"status":"success","data":["__name__","job","instance"]}`)
 	}))
 	defer server.Close()
 
@@ -246,8 +246,8 @@ func TestCheckConnection_Connected(t *testing.T) {
 	if status.Endpoint != server.URL {
 		t.Errorf("endpoint = %q, want %q", status.Endpoint, server.URL)
 	}
-	if status.BuildInfo == nil {
-		t.Error("build_info should not be nil when connected")
+	if status.LabelCount != 3 {
+		t.Errorf("LabelCount = %d, want 3", status.LabelCount)
 	}
 }
 

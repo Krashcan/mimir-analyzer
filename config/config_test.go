@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -153,6 +154,67 @@ func TestLoad_CustomMaxSeries(t *testing.T) {
 	}
 	if cfg.MaxSeries != 500 {
 		t.Errorf("MaxSeries = %d, want 500", cfg.MaxSeries)
+	}
+}
+
+func TestLoad_InvalidAMPEndpoint_MissingWorkspacePath(t *testing.T) {
+	env := validEnv()
+	env["AMP_ENDPOINT"] = "https://aps-workspaces.us-east-1.amazonaws.com"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for AMP_ENDPOINT missing /workspaces/ path")
+	}
+	if !strings.Contains(err.Error(), "AMP_ENDPOINT") {
+		t.Errorf("error should mention AMP_ENDPOINT: %v", err)
+	}
+}
+
+func TestLoad_InvalidAMPEndpoint_WrongHost(t *testing.T) {
+	env := validEnv()
+	env["AMP_ENDPOINT"] = "https://prometheus.example.com/workspaces/ws-xxx"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for AMP_ENDPOINT with wrong host")
+	}
+}
+
+func TestLoad_InvalidAMPEndpoint_MissingWSPrefix(t *testing.T) {
+	env := validEnv()
+	env["AMP_ENDPOINT"] = "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/abc123"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for workspace ID missing ws- prefix")
+	}
+}
+
+func TestLoad_InvalidAMPEndpoint_HTTPScheme(t *testing.T) {
+	env := validEnv()
+	env["AMP_ENDPOINT"] = "http://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-xxx"
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for http:// scheme (must be https://)")
+	}
+}
+
+func TestLoad_ValidAMPEndpoint_TrailingSlash(t *testing.T) {
+	env := validEnv()
+	env["AMP_ENDPOINT"] = "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-xxx/"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.HasSuffix(cfg.AMPEndpoint, "/") {
+		t.Errorf("AMPEndpoint should have trailing slash stripped, got %q", cfg.AMPEndpoint)
 	}
 }
 

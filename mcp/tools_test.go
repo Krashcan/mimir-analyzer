@@ -215,9 +215,9 @@ func TestDiagnosticBundleHandler_ValidSubsystem(t *testing.T) {
 
 func TestCheckConnectionHandler_Connected(t *testing.T) {
 	h, server := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/status/buildinfo" {
+		if r.URL.Path == "/api/v1/labels" {
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"status":"success","data":{"version":"2.10.0","branch":"HEAD"}}`)
+			fmt.Fprint(w, `{"status":"success","data":["__name__","job","instance"]}`)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -327,6 +327,82 @@ func TestQueryInstantHandler_ErrorIncludesCategory(t *testing.T) {
 	}
 }
 
+func TestDiagnosticBundleHandler_DefaultOmitsRawData(t *testing.T) {
+	h, server := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"test"},"values":[[1705312800,"1"],[1705312860,"2"]]}]}}`)
+	})
+	defer server.Close()
+
+	result, err := h.HandleDiagnosticBundle(context.Background(), makeRequest(map[string]any{
+		"subsystem": "compactor",
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("unexpected IsError=true")
+	}
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(text), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	results := resp["results"].([]any)
+	for _, r := range results {
+		entry := r.(map[string]any)
+		if entry["summary"] == nil {
+			t.Errorf("entry %q missing summary", entry["name"])
+		}
+		if res, ok := entry["result"].(map[string]any); ok {
+			if res["data"] != nil {
+				t.Errorf("entry %q should not have raw data in default (non-verbose) mode", entry["name"])
+			}
+		}
+	}
+}
+
+func TestDiagnosticBundleHandler_VerboseIncludesRawData(t *testing.T) {
+	h, server := setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"test"},"values":[[1705312800,"1"],[1705312860,"2"]]}]}}`)
+	})
+	defer server.Close()
+
+	result, err := h.HandleDiagnosticBundle(context.Background(), makeRequest(map[string]any{
+		"subsystem": "compactor",
+		"verbose":   true,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("unexpected IsError=true")
+	}
+
+	text := result.Content[0].(mcpgo.TextContent).Text
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(text), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	results := resp["results"].([]any)
+	hasData := false
+	for _, r := range results {
+		entry := r.(map[string]any)
+		if res, ok := entry["result"].(map[string]any); ok {
+			if res["data"] != nil {
+				hasData = true
+			}
+		}
+	}
+	if !hasData {
+		t.Error("verbose mode should include raw data in at least one result")
+	}
+}
+
 func TestAllHandlers_IncludeWindowField(t *testing.T) {
 	ampHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -334,8 +410,8 @@ func TestAllHandlers_IncludeWindowField(t *testing.T) {
 			fmt.Fprint(w, `{"status":"success","data":["metric_1"]}`)
 		} else if r.URL.Path == "/api/v1/query_range" {
 			fmt.Fprint(w, `{"status":"success","data":{"resultType":"matrix","result":[]}}`)
-		} else if r.URL.Path == "/api/v1/status/buildinfo" {
-			fmt.Fprint(w, `{"status":"success","data":{"version":"2.10.0"}}`)
+		} else if r.URL.Path == "/api/v1/labels" {
+			fmt.Fprint(w, `{"status":"success","data":["__name__","job"]}`)
 		} else {
 			fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1705312800,"1"]}]}}`)
 		}

@@ -10,9 +10,10 @@ import (
 )
 
 type DiagnosticQuery struct {
-	Name        string `json:"name"`
-	Expr        string `json:"expr"`
-	Description string `json:"description"`
+	Name         string   `json:"name"`
+	Expr         string   `json:"expr"`
+	Description  string   `json:"description"`
+	Alternatives []string `json:"alternatives,omitempty"`
 }
 
 type Bundle struct {
@@ -28,10 +29,11 @@ type BundleResult struct {
 }
 
 type QueryResultEntry struct {
-	Name   string           `json:"name"`
-	Query  string           `json:"query"`
-	Result *amp.QueryResult `json:"result,omitempty"`
-	Error  string           `json:"error,omitempty"`
+	Name    string           `json:"name"`
+	Query   string           `json:"query"`
+	Result  *amp.QueryResult `json:"result,omitempty"`
+	Summary *QuerySummary    `json:"summary,omitempty"`
+	Error   string           `json:"error,omitempty"`
 }
 
 var subsystemBundles = map[string]func() Bundle{
@@ -70,15 +72,7 @@ func RunBundle(ctx context.Context, client *amp.Client, cfg *config.Config, subs
 	var results []QueryResultEntry
 	for _, b := range bundles {
 		for _, q := range b.Queries {
-			qr, err := client.QueryRange(ctx, q.Expr, start, end, "1m")
-			var entry QueryResultEntry
-			entry.Name = q.Name
-			entry.Query = q.Expr
-			if err != nil {
-				entry.Error = err.Error()
-			} else {
-				entry.Result = qr
-			}
+			entry := runQueryWithAlternatives(ctx, client, q, start, end)
 			results = append(results, entry)
 		}
 	}
@@ -91,4 +85,39 @@ func RunBundle(ctx context.Context, client *amp.Client, cfg *config.Config, subs
 			End:   end.Format(time.RFC3339),
 		},
 	}, nil
+}
+
+func runQueryWithAlternatives(ctx context.Context, client *amp.Client, q DiagnosticQuery, start, end time.Time) QueryResultEntry {
+	entry := QueryResultEntry{Name: q.Name, Query: q.Expr}
+
+	qr, err := client.QueryRange(ctx, q.Expr, start, end, "1m")
+	if err != nil {
+		entry.Error = err.Error()
+		return entry
+	}
+
+	if qr.Status != "empty" || len(q.Alternatives) == 0 {
+		entry.Result = qr
+		entry.Summary, _ = ComputeSummary(qr.Data)
+		return entry
+	}
+
+	// Primary returned empty, try alternatives
+	for _, alt := range q.Alternatives {
+		altResult, altErr := client.QueryRange(ctx, alt, start, end, "1m")
+		if altErr != nil {
+			continue
+		}
+		if altResult.Status != "empty" {
+			entry.Query = alt
+			entry.Result = altResult
+			entry.Summary, _ = ComputeSummary(altResult.Data)
+			return entry
+		}
+	}
+
+	// All alternatives also empty, return the primary empty result
+	entry.Result = qr
+	entry.Summary, _ = ComputeSummary(qr.Data)
+	return entry
 }

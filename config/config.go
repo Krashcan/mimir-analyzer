@@ -3,9 +3,13 @@ package config
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
+
+var ampEndpointPattern = regexp.MustCompile(`^https://aps-workspaces\.[a-z0-9-]+\.amazonaws\.com/workspaces/ws-[a-zA-Z0-9-]+$`)
 
 type Config struct {
 	AMPEndpoint   string
@@ -20,6 +24,10 @@ func Load() (*Config, error) {
 	endpoint := os.Getenv("AMP_ENDPOINT")
 	if endpoint == "" {
 		return nil, fmt.Errorf("AMP_ENDPOINT is required")
+	}
+	endpoint = strings.TrimRight(endpoint, "/")
+	if !ampEndpointPattern.MatchString(endpoint) {
+		return nil, fmt.Errorf("AMP_ENDPOINT has invalid format: %q — expected https://aps-workspaces.<region>.amazonaws.com/workspaces/ws-<id>", endpoint)
 	}
 
 	region := os.Getenv("AWS_REGION")

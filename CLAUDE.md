@@ -366,16 +366,16 @@ runnable individually via `query_instant` / `query_range`.
 
 ```promql
 # Rule evaluation lag — key signal
-histogram_quantile(0.99, rate(cortex_ruler_rule_evaluation_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, rate(cortex_prometheus_rule_evaluation_duration_seconds_bucket[5m]))
 
 # Missed evaluations — the metric we care about
-increase(cortex_ruler_rule_evaluation_missed_iterations_total[5m])
+increase(cortex_prometheus_rule_group_iterations_missed_total[5m])
 
 # Rules per rule group (high counts = slow evaluation)
-cortex_ruler_rule_group_rules
+cortex_prometheus_rule_group_rules
 
 # Evaluation iteration duration
-histogram_quantile(0.99, rate(cortex_ruler_rule_group_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, rate(cortex_prometheus_rule_group_duration_seconds_bucket[5m]))
 
 # Querier errors from ruler
 rate(cortex_ruler_queries_failed_total[5m])
@@ -384,7 +384,7 @@ rate(cortex_ruler_queries_failed_total[5m])
 cortex_ring_members{name="ruler"}
 
 # Rule evaluations per second
-rate(cortex_ruler_rule_evaluations_total[5m])
+rate(cortex_prometheus_rule_evaluations_total[5m])
 
 # Scheduler queue depth (if using rule sharding)
 cortex_ruler_sync_rules_total
@@ -464,8 +464,8 @@ When Claude is given access to this MCP server, it should follow this workflow:
 Use the appropriate metrics to confirm the user-reported issue exists in the data.
 For example, for missed evaluations:
 ```promql
-increase(cortex_ruler_rule_evaluation_missed_iterations_total[<test_duration>])
-rate(cortex_ruler_rule_evaluations_total[5m])
+increase(cortex_prometheus_rule_group_iterations_missed_total[<test_duration>])
+rate(cortex_prometheus_rule_evaluations_total[5m])
 ```
 
 ### Phase 3 — Trace the bottleneck
@@ -487,10 +487,10 @@ At each hop, check:
 
 ### Phase 4 — Correlate timing
 Use `query_range` to overlay:
-- `cortex_ruler_rule_evaluation_missed_iterations_total` (rate)
+- `cortex_prometheus_rule_group_iterations_missed_total` (rate)
 - `cortex_query_frontend_queue_length`
 - `cortex_ingester_memory_series`
-- `cortex_ruler_rule_evaluation_duration_seconds` (p99)
+- `cortex_prometheus_rule_evaluation_duration_seconds` (p99)
 
 Look for which metric **rises before** missed evaluations increase — that's your bottleneck.
 
@@ -601,7 +601,7 @@ INVESTIGATION APPROACH
   1. Start with: run_diagnostic_bundle subsystem=ruler
      Ruler is the primary suspect for missed evaluations.
   2. Confirm the symptom:
-       increase(cortex_ruler_rule_evaluation_missed_iterations_total[<window>])
+       increase(cortex_prometheus_rule_group_iterations_missed_total[<window>])
   3. Trace the call path:
        ruler → query_frontend → querier → ingester / store_gateway
                ↓ writes back via
@@ -611,9 +611,9 @@ INVESTIGATION APPROACH
   5. Produce a report: bottleneck component, evidence, scaling recommendation.
 
 KEY MIMIR METRICS FOR MISSED EVALUATIONS
-  cortex_ruler_rule_evaluation_missed_iterations_total   — the primary symptom
-  cortex_ruler_rule_evaluation_duration_seconds          — ruler evaluation latency
-  cortex_ruler_rule_group_duration_seconds               — full group eval latency
+  cortex_prometheus_rule_group_iterations_missed_total   — the primary symptom
+  cortex_prometheus_rule_evaluation_duration_seconds          — ruler evaluation latency
+  cortex_prometheus_rule_group_duration_seconds               — full group eval latency
   cortex_ruler_queries_failed_total                      — querier errors from ruler
   cortex_query_frontend_queue_length                     — query backpressure
   cortex_querier_query_duration_seconds                  — querier latency
@@ -622,10 +622,10 @@ KEY MIMIR METRICS FOR MISSED EVALUATIONS
 
 EXAMPLE QUERIES
   # How many evaluations were missed during the load test?
-  increase(cortex_ruler_rule_evaluation_missed_iterations_total[2h])
+  increase(cortex_prometheus_rule_group_iterations_missed_total[2h])
 
   # p99 evaluation latency over time
-  histogram_quantile(0.99, rate(cortex_ruler_rule_evaluation_duration_seconds_bucket[5m]))
+  histogram_quantile(0.99, rate(cortex_prometheus_rule_evaluation_duration_seconds_bucket[5m]))
 
   # Is the query frontend backed up?
   cortex_query_frontend_queue_length
