@@ -5,8 +5,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-func NewServer(handlers *Handlers) *server.MCPServer {
-	s := server.NewMCPServer("mimir-analyzer", "1.0.0")
+func NewServer(handlers *Handlers, version string) *server.MCPServer {
+	s := server.NewMCPServer("mimir-analyzer", version)
 
 	queryInstantTool := mcpgo.NewTool("query_instant",
 		mcpgo.WithDescription("Run a PromQL instant query against the AMP workspace. Time is automatically clamped to the configured load test window. Defaults to LOADTEST_END if no time given."),

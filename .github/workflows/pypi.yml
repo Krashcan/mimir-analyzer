@@ -1,0 +1,70 @@
+name: PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-wheels:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            platform_tag: manylinux_2_17_x86_64
+          - goos: linux
+            goarch: arm64
+            platform_tag: manylinux_2_17_aarch64
+          - goos: darwin
+            goarch: amd64
+            platform_tag: macosx_10_9_x86_64
+          - goos: darwin
+            goarch: arm64
+            platform_tag: macosx_11_0_arm64
+          - goos: windows
+            goarch: amd64
+            platform_tag: win_amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install wheel
+        run: pip install wheel
+
+      - name: Build wheel
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python scripts/build_wheels.py \
+            --version "$VERSION" \
+            --platform "${{ matrix.goos }}-${{ matrix.goarch }}" \
+            --platform-tag "${{ matrix.platform_tag }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform_tag }}
+          path: dist/*.whl
+
+  publish:
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

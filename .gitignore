@@ -5,5 +5,11 @@ mimir-analyzer
 .idea/
 *.iml
 
+# Build output
+dist/
+
+# Python wheel build artifacts
+python/src/mimir_analyzer/bin/
+
 # OS
 .DS_Store

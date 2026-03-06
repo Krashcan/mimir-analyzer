@@ -113,6 +113,8 @@ EXAMPLE QUERIES
   rate(cortex_querier_queries_failed_total[5m])
 `
 
+var version = "dev"
+
 func main() {
 	help := flag.Bool("help", false, "Print usage")
 	flag.Parse()
@@ -145,7 +147,7 @@ func main() {
 	}
 
 	handlers := mcpserver.NewHandlers(client, cfg)
-	s := mcpserver.NewServer(handlers)
+	s := mcpserver.NewServer(handlers, version)
 
 	if err := server.ServeStdio(s); err != nil {
 		log.Fatalf("server error: %v", err)

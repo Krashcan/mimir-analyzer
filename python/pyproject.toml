@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mimir-analyzer"
+dynamic = ["version"]
+description = "Mimir load test bottleneck analyzer - MCP server for Amazon Managed Prometheus"
+readme = "../README.md"
+license = "MIT"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Topic :: System :: Monitoring",
+    "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+mimir-analyzer = "mimir_analyzer:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
