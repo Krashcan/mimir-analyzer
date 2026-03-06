@@ -8,18 +8,15 @@ import (
 	"os"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/mark3labs/mcp-go/server"
 
 	"mimir-analyzer/amp"
 	"mimir-analyzer/cli"
 	"mimir-analyzer/config"
-	mcpserver "mimir-analyzer/mcp"
 )
 
-const helpText = `mimir-analyzer — Mimir load test bottleneck analyzer (MCP server)
+const helpText = `mimir-analyzer — Mimir load test bottleneck analyzer
 
 USAGE
-  mimir-analyzer                                    Start the MCP server (stdio transport)
   mimir-analyzer --help                             Print this help
   mimir-analyzer query <expr> [--time <RFC3339>]    Run an instant PromQL query
   mimir-analyzer query-range <expr> [--step 5m]     Run a range query
@@ -43,50 +40,45 @@ OPTIONAL ENVIRONMENT VARIABLES
 AWS AUTHENTICATION
   Uses the default AWS credential chain. Credentials must already be present
   in the environment (e.g. via environment variables, ~/.aws/credentials, or
-  an instance profile). If credentials expire mid-session, tool calls will
+  an instance profile). If credentials expire mid-session, commands will
   return a clear error: "AWS credentials expired or invalid"
 
-MCP TOOLS
-  check_connection
+COMMANDS
+  check-connection
     Verify connectivity to the AMP workspace before running queries.
     Returns status: connected, auth_failed, unreachable, wrong_endpoint, or error.
     Call this first to confirm the endpoint is reachable and credentials are valid.
-    Input:  (none)
 
-  query_instant
+  query <expr> [--time <RFC3339>]
     Run a PromQL instant query. Time is clamped to [LOADTEST_START, LOADTEST_END].
     Defaults to LOADTEST_END if no time given.
-    Input:  expr (required), time (optional, RFC3339)
 
-  query_range
+  query-range <expr> [--start <RFC3339>] [--end <RFC3339>] [--step <duration>]
     Run a PromQL range query for trend analysis and correlation.
     start/end are clamped to [LOADTEST_START, LOADTEST_END] and default to the
     full window if omitted. Step defaults to 1m.
-    Input:  expr (required), start, end, step (all optional)
 
-  list_metrics
+  list-metrics [--match <selector>] [--limit <N>]
     Discover available metric names, scoped to the load test window.
-    Use before querying to verify metric names exist.
-    Input:  match (optional label selector), limit (optional, default 200)
+    Use before querying to verify metric names exist. Default limit: 200.
 
-  run_diagnostic_bundle
-    Run a pre-built set of diagnostic queries for a Mimir subsystem.
-    Covers: ruler, ingester, querier, distributor, compactor, store_gateway,
-            query_frontend, all
+  diagnose <subsystem> [--start <RFC3339>] [--end <RFC3339>] [--verbose]
+    Run pre-built diagnostic queries for a Mimir subsystem.
+    Subsystems: ruler, ingester, querier, distributor, compactor, store_gateway, all
     Runs over the full load test window by default; start/end can narrow it.
-    Input:  subsystem (required), start, end (optional)
+    Use --verbose to include raw query data (default: summaries only).
 
 INVESTIGATION APPROACH
-  1. Start with: run_diagnostic_bundle subsystem=ruler
+  1. Start with: mimir-analyzer diagnose ruler
      Ruler is the primary suspect for missed evaluations.
   2. Confirm the symptom:
-       increase(cortex_prometheus_rule_group_iterations_missed_total[<window>])
+       mimir-analyzer query 'increase(cortex_prometheus_rule_group_iterations_missed_total[<window>])'
   3. Trace the call path:
        ruler → query_frontend → querier → ingester / store_gateway
                ↓ writes back via
        distributor → ingester
      At each hop check p99 latency, error rates, and queue depths.
-  4. Use query_range to correlate: which metric rose *before* missed evaluations?
+  4. Use query-range to correlate: which metric rose *before* missed evaluations?
   5. Produce a report: bottleneck component, evidence, scaling recommendation.
 
 KEY MIMIR METRICS FOR MISSED EVALUATIONS
@@ -101,16 +93,16 @@ KEY MIMIR METRICS FOR MISSED EVALUATIONS
 
 EXAMPLE QUERIES
   # How many evaluations were missed during the load test?
-  increase(cortex_prometheus_rule_group_iterations_missed_total[2h])
+  mimir-analyzer query 'increase(cortex_prometheus_rule_group_iterations_missed_total[2h])'
 
   # p99 evaluation latency over time
-  histogram_quantile(0.99, rate(cortex_prometheus_rule_evaluation_duration_seconds_bucket[5m]))
+  mimir-analyzer query-range 'histogram_quantile(0.99, rate(cortex_prometheus_rule_evaluation_duration_seconds_bucket[5m]))'
 
   # Is the query frontend backed up?
-  cortex_query_frontend_queue_length
+  mimir-analyzer query cortex_query_frontend_queue_length
 
   # Querier error rate
-  rate(cortex_querier_queries_failed_total[5m])
+  mimir-analyzer query-range 'rate(cortex_querier_queries_failed_total[5m])'
 `
 
 func main() {
@@ -136,18 +128,7 @@ func main() {
 
 	client := amp.NewClientWithConfig(cfg, awsCfg.Credentials)
 
-	args := flag.Args()
-	if len(args) > 0 {
-		if err := cli.Run(context.TODO(), args, client, cfg, os.Stdout); err != nil {
-			log.Fatalf("CLI error: %v", err)
-		}
-		return
-	}
-
-	handlers := mcpserver.NewHandlers(client, cfg)
-	s := mcpserver.NewServer(handlers)
-
-	if err := server.ServeStdio(s); err != nil {
-		log.Fatalf("server error: %v", err)
+	if err := cli.Run(context.TODO(), flag.Args(), client, cfg, os.Stdout); err != nil {
+		log.Fatalf("error: %v", err)
 	}
 }
